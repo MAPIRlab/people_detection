@@ -1,0 +1,195 @@
+#!/usr/bin/env python
+# This actions server move the robot until the detected person is centered at the image
+# you need to launch again openpose, but no depth is needed
+
+## Steps:
+# 1. We activate the service to start, but without the depth
+# 2. We start processing (subscribing) to the openpose topic
+
+import rospy
+import actionlib
+from openpose_pkg.msg import UserRGBDArray
+import openpose_pkg.msg
+from openpose_pkg.srv import StartDetectionHuman
+from geometry_msgs.msg import Twist
+from math import fabs
+
+class HumanCenteredAction(object):
+    # create messages that are used to publish feedback/result
+    _feedback = openpose_pkg.msg.HumanCenteredFeedback()
+    _result = openpose_pkg.msg.HumanCenteredResult()
+    success = False
+
+    def __init__(self, name):
+
+        # params from the .yaml file
+        self._start_detection_srv = rospy.get_param('~ROSServices/start_detection_srv', '/error_srv_start')
+        self._topic_human_3d_name = rospy.get_param('~ROSTopics/humans_3d_topic', '/frame_humans')
+        self._debug = rospy.get_param('~DebugInfo/debug_info', False)
+        self._topic_vel = rospy.get_param('~ROSTopics/cmd_vel_topic', '/cmd_vel')
+        self._turning_speed = rospy.get_param('~RobotParam/turning_speed', 0.1)
+        self._tolerance_dist = rospy.get_param('~RobotParam/error_dist', 0.1)
+        self._time_out_detection = rospy.get_param('~RobotParam/time_out_detection', 2.0)
+        self._verbose = rospy.get_param('~RobotParam/verbose', True)
+        ## start service
+        self._srv_start = rospy.ServiceProxy(self._start_detection_srv, StartDetectionHuman)
+
+        ## humans topic
+        self._sub_humans = rospy.Subscriber(self._topic_human_3d_name, UserRGBDArray, self.callback_humans) ## humans from openpose
+        ## velocity publisher
+        self._pub_vel = rospy.Publisher(self._topic_vel, Twist, queue_size = 1) 
+
+        ## useful variables
+        self._width = 10
+        ## self._height = 10
+        self._center_x = 0
+        self._valid_center = False
+
+        r = rospy.Rate(1)
+
+        # Configure Action Server to be offered
+        # create messages that are used to publish result
+        self._action_name = name
+        self._as = actionlib.SimpleActionServer(self._action_name, openpose_pkg.msg.HumanCenteredAction,
+                                                execute_cb=self.execute_cb, auto_start=False)
+        self._as.start()
+      
+
+    def callback_humans(self, data):
+        # we just need the users when we are trying to center the robot
+        if not self.success:
+            # we just keep the firts human, and the pose_3D field (center)
+            self._users = data.users
+            self._width = data.image_w
+            ## self._height = data.image_h
+            if len(self._users) > 0:
+                self.user_msg = self._users[0]
+                self._center_x = self.user_msg.pose_3D.position.x - self._width/2 ## center with respect to the camera center
+                self._valid_center = True
+
+
+    # ====================================================== #
+    #                   ACTION CALLBACK                      #
+    # ====================================================== #
+    def execute_cb(self, goal):
+        if self._verbose:
+            rospy.loginfo('[%s]: CENTER-HUMAN action server requested!', self._action_name)
+
+        self.success = False
+        self.failed = False
+        self._valid_center = False
+        self._last_time_human = rospy.Time.now()
+
+        # Step 1: start detection
+        try:
+            self._srv_start('high', 'on')
+        except rospy.ServiceException, e:
+            pass
+
+        # start executing the action, until we reach the goal position
+        while not self.success and not rospy.is_shutdown():
+            # check that preempt has not been requested by the client
+            if self._as.is_preempt_requested(): # this must be here always!!!
+                rospy.loginfo('[%s]: Preempted', self._action_name)
+                self._as.set_preempted()
+                self.success = False
+                break
+
+            # Step 2: if we have a valid human center, we move the robot
+            if self._valid_center:
+                if self._verbose:
+                    rospy.loginfo('[%s]: valid human center.', self._action_name)
+
+                self._valid_center = False
+                self._last_time_human = rospy.Time.now()
+                # send the feedback back
+                self._feedback.diffx.append(self._center_x)
+                # publish the feedback
+                self._as.publish_feedback(self._feedback)
+
+                if fabs(self._center_x) > self._tolerance_dist:
+                    # command the robot
+                    rotate = Twist()
+                    rotate.linear.x = rotate.linear.y = rotate.linear.z = 0.0
+                    red_factor = (self._width - fabs(self._center_x))/ self._width # reduction factor between 0 and 1
+                    direction = 0
+                    if self._center_x < 0:
+                        direction = 1
+                    else:
+                        direction = -1
+
+                    rotate.angular.z = direction * red_factor * self._turning_speed
+                    self._pub_vel.publish(rotate)
+                    if self._verbose:
+                        rospy.loginfo('[%s]: Turning robot at [%.3f]rad/s...', self._action_name,rotate.angular.z )
+
+                else:
+                    # we are in front of the human
+                    if self._verbose:
+                        rospy.loginfo('[%s]: User is centered. Closing Action.', self._action_name)
+                    # first, we stop the robot
+                    rotate = Twist()
+                    rotate.linear.x = rotate.linear.y = rotate.linear.z = 0.0
+                    rotate.angular.z = 0
+                    self._pub_vel.publish(rotate)
+
+                    self.success = True
+                    try:
+                        self._srv_start('low', 'on') # we set the frecuency to low
+                    except rospy.ServiceException, e:
+                        pass
+
+            # Not a valid human-center on image (check timeout)
+            elif (rospy.Time.now() - self._last_time_human).to_sec() > self._time_out_detection:
+                rospy.loginfo('[%s]: TimeOut Reached' % self._action_name)
+
+                # Check if user is close! rotate a bit
+                rotate = Twist()
+                rotate.linear.x = rotate.linear.y = rotate.linear.z = 0.0
+                direction = 1
+                if (rospy.Time.now() - self._last_time_human).to_sec() > self._time_out_detection + 4.0:
+                    #More than 2 seconds turning -> change direction
+                    direction = -1
+
+                if (rospy.Time.now() - self._last_time_human).to_sec() > self._time_out_detection + 12.0:
+                    # User not found in the proximity... return error
+                    rotate = Twist()
+                    rotate.linear.x = rotate.linear.y = rotate.linear.z = 0.0
+                    rotate.angular.z = 0
+                    self._pub_vel.publish(rotate)
+                    self.failed=True
+                    self.success=True
+                    break
+
+                # command the robot
+                rotate.angular.z = direction * self._turning_speed
+                self._pub_vel.publish(rotate)
+                rospy.sleep(0.2)
+            else:
+                if self._verbose:
+                    rospy.loginfo('[%s]: Not user detected. Waiting...', self._action_name)
+                    rospy.sleep(0.5)
+
+        # End-While -notSuccess
+
+        if self.success:
+            self._result.finalx = self._center_x
+            if self.failed:
+                if self._verbose:
+                    rospy.loginfo('[%s]: Failed' % self._action_name)
+                self._as.set_aborted(self._result) 
+            else:
+                if self._verbose:
+                    rospy.loginfo('[%s]: Succeeded' % self._action_name)
+                self._as.set_succeeded(self._result)
+        else:
+            self._as.set_preempted(self._result)
+
+        # Ensure AS closes
+        return
+
+
+if __name__ == '__main__':
+    rospy.init_node('human_centered_server')
+    server = HumanCenteredAction(rospy.get_name())
+    rospy.spin() ## to avoid end up the node

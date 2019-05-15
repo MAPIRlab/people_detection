@@ -1,0 +1,65 @@
+#!/usr/bin/env python
+#modify: 13/07/2018
+#mercedes
+import rospy
+from sensor_msgs.msg import Image
+import cv2
+from cv_bridge import CvBridge, CvBridgeError
+import numpy as np
+import time
+import sys
+
+
+class show_frame_human_class:
+
+    def __init__(self):
+        rospy.init_node('window_node')
+        ###############################
+        ####    PARAMETERS         ####
+        ###############################
+        self._topic_human_frame_drawn_name = rospy.get_param('~ROSTopics/video_humans_drawn_topic', '/frame_humans')
+        self._img_ready = False
+        self._show_image = rospy.get_param('~DisplayImages/show_frame', False)
+        self._debug = rospy.get_param('~DebugInfo/debug_info', False)
+
+        ######################
+        #### OPENCV BRIDGE ###
+        ######################
+        self._bridge = CvBridge()
+
+
+    def callback_img(self, frame_ros):
+        try:
+            self._frame_cv = self._bridge.imgmsg_to_cv2(frame_ros, "bgr8")
+            self._img_ready = True
+        except CvBridgeError as e:
+            print (e)
+
+
+    def show_frame_loop(self):
+
+        r = rospy.Rate(500) #500 Hz
+        self._sub_img = rospy.Subscriber(self._topic_human_frame_drawn_name, Image, self.callback_img)
+        while (not rospy.is_shutdown()):
+            #3if the user wants to show the image
+            if (self._show_image):
+                #if there is a new image
+                if (self._img_ready):
+                    self._img_ready = False 
+                    cv2.imshow("human frames", self._frame_cv)
+                    cv2.waitKey(1)
+            r.sleep()
+        cv2.destroyAllWindows()
+        rospy.signal_shutdown("Closing window")
+        sys.exit(1)
+
+############################
+if __name__ == '__main__':
+    try:
+        window = show_frame_human_class()
+        window.show_frame_loop()
+    except rospy.ROSInterruptException: pass
+
+    
+
+

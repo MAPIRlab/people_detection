@@ -1,0 +1,6 @@
+<launch>
+      <node pkg="openpose_pkg" type="center_human_server" name="center_human_server" output="screen" >
+            <rosparam file="$(find openpose_pkg)/launch/openpose.yaml" command="load" />
+      </node>
+
+</launch>

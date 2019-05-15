@@ -1,0 +1,6 @@
+<launch>
+ 	  <node pkg="openpose_pkg" type="camera_basic" name="camera_basic" >
+ 	        <rosparam file="$(find openpose_pkg)/launch/openpose.yaml" command="load" />
+  	  </node>
+
+</launch>

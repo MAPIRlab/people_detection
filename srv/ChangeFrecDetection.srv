@@ -1,0 +1,3 @@
+string change_frec_to ##current options: off, low, high
+string compute_depth ## current options: 'off', 'on'
+---

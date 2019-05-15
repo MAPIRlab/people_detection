@@ -1,0 +1,17 @@
+#!/usr/bin/env python
+
+import roslib
+import rospy
+import actionlib
+
+from openpose_pkg.msg import HumanCenteredAction, HumanCenteredGoal
+
+if __name__ == '__main__':
+    rospy.init_node('human_center_test')
+    client = actionlib.SimpleActionClient('center_human_server', HumanCenteredAction)
+    client.wait_for_server()
+    print 'server started, sending goal'
+    # Fill in the goal here
+    goal = HumanCenteredGoal()
+    client.send_goal(goal)
+    client.wait_for_result(rospy.Duration.from_sec(5.0))

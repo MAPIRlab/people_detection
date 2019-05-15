@@ -1,0 +1,10 @@
+<!-- launch file -->
+<launch>
+     
+
+      # OPENPOSE INFERENCE
+ 	  <node  name="openpose_inference" pkg="openpose_pkg" type="openpose_inference" >
+ 	        <rosparam file="$(find openpose_pkg)/launch/openpose.yaml" command="load" />
+  	  </node>
+
+</launch>

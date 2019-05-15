@@ -1,0 +1,69 @@
+DisplayImages:
+  show_frame : True
+
+DebugInfo:
+  debug_info : False
+
+FrecInference:
+  high_frec : 10
+  low_frec : 5
+  off_frec : 0
+
+HumanDetected:
+  threshold_human : 0.4
+  single_human : False
+  compute_body : True
+  keep_alive : 0.5 # in secs
+  max_freq_pub : 10 ## Hz
+
+ImageParameters:
+  factor : -2
+  
+RobotParam: 
+  turning_speed : 0.3
+  error_dist : 10
+  time_out_detection: 1.0   #timeout for aborting if user not found
+ 
+Rooms:
+  office : False
+  free : True
+  Corner : True
+
+DualCams:
+  use_dual_camera : True
+  iterations_up : 1
+  iterations_down : 1
+  rotate_images : True
+  
+
+
+ROSTopics:
+  image_topic : openpose/usb_cam/image_dim
+  humans_topic: openpose/humans
+  frame_humans_topic: openpose/found_human_frame
+  video_humans_drawn_topic : openpose/frame_humans/draw_img
+  humans_3d_topic : openpose/users_3d
+
+  image_cam_topic : usb_cam/image_raw
+
+  rgb_cam_topic : camera_down/rgb/image_rect_color    
+  depth_cloud_topic : camera_down/depth/points      
+
+  rgb_up_cam_topic : camera_up/rgb/image_rect_color    
+  depth_cloud_up_topic : camera_up/depth/points      
+
+
+  users_3d_topic : openpose/users_3d_depth
+  marker_users_topic : openpose/appro_user_markers
+  cmd_vel_topic : cmd_vel
+  markers_3d_body_parts_topic : openpose/body_3d_markers
+  people : people
+
+  humans_2d_topic : openpose/humans_2d_basic
+  image_topic_undist : stereo/usb_cam/image_undist
+  
+ROSServices:
+  start_detection_srv : openpose/start_detection_humans_service
+
+  
+

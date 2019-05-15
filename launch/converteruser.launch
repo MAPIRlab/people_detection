@@ -1,0 +1,6 @@
+<launch>
+      <node pkg="openpose_pkg" type="User2Person2" name="User2Person2" output="screen" >
+            <rosparam file="$(find openpose_pkg)/launch/openpose.yaml" command="load" />
+      </node>
+
+</launch>

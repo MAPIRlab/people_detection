@@ -1,0 +1,12 @@
+<!-- launch file -->
+<launch>
+      # SET MACHINE
+  	  <!-- <machine name="jetson_machine" address="192.168.2.2" env-loader="/opt/ros/kinetic/env.sh" user="nvidia" password="nvidia"/> -->
+	  <machine name="jetson_machine" address="192.168.2.2" env-loader="/opt/ros/kinetic/env.sh" user="nvidia"/>
+
+      # OPENPOSE INFERENCE
+ 	  <node machine="jetson_machine" name="openpose_inference" pkg="openpose_pkg" type="openpose_inference" >
+ 	        <rosparam file="$(find openpose_pkg)/launch/openpose.yaml" command="load" />
+  	  </node>
+
+</launch>

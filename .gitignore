@@ -1,0 +1,9 @@
+*~
+*.pyc
+*.user
+/CMakeLists.txt.user*
+CATKIN_IGNORE
+*CATKIN_IGNORE
+*/CATKIN_IGNORE
+*/*/CATKIN_IGNORE
+*/*/*/CATKIN_IGNORE

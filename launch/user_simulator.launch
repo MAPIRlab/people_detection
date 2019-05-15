@@ -1,0 +1,9 @@
+<launch>
+        <!-- ################## FISH-EYE CAM NODE ##################### -->
+      <node pkg="openpose_pkg" type="generator_users" name="generator_users" >
+            <rosparam file="$(find openpose_pkg)/launch/openpose.yaml" command="load" />
+      </node>
+    <include file="$(find openpose_pkg)/launch/converteruser.launch" /> 
+
+
+</launch>

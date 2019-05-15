@@ -1,0 +1,16 @@
+<launch>
+    <!-- ################ HUMAN PROCESSOR  ################ -->
+    <node name="proc_human_basic" pkg="openpose_pkg" type="proc_human_basic" >
+            <rosparam file="$(find openpose_pkg)/launch/openpose.yaml" command="load" />
+    </node>
+
+
+
+     <!-- ################## OPENPOSE BASIC NODE ##################### -->
+      <machine name="jetson_machine" address="192.168.2.2" env-loader="/opt/ros/kinetic/env.sh" user="nvidia" password="nvidia"/>
+
+      <node machine="jetson_machine" name="openpose_basic" pkg="openpose_pkg" type="openpose_basic" >
+            <rosparam file="$(find openpose_pkg)/launch/openpose.yaml" command="load" />
+      </node>
+
+</launch>

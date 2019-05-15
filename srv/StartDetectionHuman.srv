@@ -1,0 +1,3 @@
+string initial_frec ##current options: 'low', 'high', 'off' -sleeping detection'
+string compute_depth ## current options: 'off', 'on'
+---

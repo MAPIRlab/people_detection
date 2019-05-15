@@ -1,0 +1,151 @@
+#!/usr/bin/env python
+
+import rospy
+import sys
+##from std_msgs.msg import Int16
+import numpy as np
+from openpose_pkg.msg import *
+from geometry_msgs.msg import Pose
+import random
+from tf.transformations import quaternion_from_euler
+from math import pi
+from visualization_msgs.msg import MarkerArray, Marker
+
+class GenUsers:
+
+    def __init__(self):
+        rospy.init_node('fixed_user_generator_node')
+
+        self._topic_users_3d = rospy.get_param('~ROSTopics/users_3d_topic', '/empty_topic')
+  
+        self._pub_people = rospy.Publisher(self._topic_users_3d, User3DArray, queue_size = 100)
+ 
+        self._flag_publish = True
+
+        self._office = rospy.get_param('~Rooms/office', False)
+        self._free = rospy.get_param('~Rooms/free', False)
+        self._corner = rospy.get_param('~Rooms/Corner', False)
+
+
+
+    def create_msg_user(self, x, y, t, name):
+        user_msg = User3D()
+        pose_user = Pose()
+
+        user_msg.name = name
+        H = np.array([0., 0., t])
+        QH = quaternion_from_euler(*H)
+        pose_user.orientation.x = QH[0]
+        pose_user.orientation.y = QH[1]
+        pose_user.orientation.z = QH[2]
+        pose_user.orientation.w = QH[3]
+                
+        pose_user.position.x = x
+        pose_user.position.y = y
+        pose_user.position.z = 0.0
+
+        user_msg.pose_3D = pose_user
+        return user_msg
+
+    def loop_converter(self):
+        r = rospy.Rate(1)
+      
+        while (not rospy.is_shutdown()):
+            if self._flag_publish:
+  
+                userarray_msg = User3DArray()
+                ##user_msg_ = User3D()
+                ## marker_msg_body = MarkerArray()
+                ## fill the msg
+                userarray_msg.header.frame_id = "map"
+                userarray_msg.header.stamp = rospy.Time.now()
+
+                ## fil users
+                
+
+                if self._office:
+                    x1 = rospy.get_param('~Users/office_users/user1/x_pos', 0)
+                    y1 = rospy.get_param('~Users/office_users/user1/y_pos', 0)
+                    t1 = rospy.get_param('~Users/office_users/user1/theta', 0)
+                
+                    user_msg_ = self.create_msg_user(x1, y1, t1, "javi")
+                    user_msg_.valid_orientation = 1
+                    user_msg_.certainty = 0.9
+                    userarray_msg.users.append(user_msg_)
+
+
+                    x1 = rospy.get_param('~Users/office_users/user2/x_pos', 0)
+                    y1 = rospy.get_param('~Users/office_users/user2/y_pos', 0)
+                    t1 = rospy.get_param('~Users/office_users/user2/theta', 0)
+                
+                    user_msg_ = self.create_msg_user(x1, y1, t1, "curro")
+                    user_msg_.valid_orientation = 1
+                    user_msg_.certainty = 0.9
+                    userarray_msg.users.append(user_msg_)
+
+                elif self._free:
+                    x1 = rospy.get_param('~Users/free_space_users/user1/x_pos', 0)
+                    y1 = rospy.get_param('~Users/free_space_users/user1/y_pos', 0)
+                    t1 = rospy.get_param('~Users/free_space_users/user1/theta', 0)
+                
+                    user_msg_ = self.create_msg_user(x1, y1, t1, "pato1")
+                    user_msg_.valid_orientation = 1
+                    user_msg_.certainty = 0.9
+                    userarray_msg.users.append(user_msg_)
+
+
+                    x1 = rospy.get_param('~Users/free_space_users/user2/x_pos', 0)
+                    y1 = rospy.get_param('~Users/free_space_users/user2/y_pos', 0)
+                    t1 = rospy.get_param('~Users/free_space_users/user2/theta', 0)
+                
+                    user_msg_ = self.create_msg_user(x1, y1, t1, "charlatan1")
+                    user_msg_.valid_orientation = 1
+                    user_msg_.certainty = 0.9
+                    userarray_msg.users.append(user_msg_)
+
+                    x1 = rospy.get_param('~Users/free_space_users/user3/x_pos', 0)
+                    y1 = rospy.get_param('~Users/free_space_users/user3/y_pos', 0)
+                    t1 = rospy.get_param('~Users/free_space_users/user3/theta', 0)
+                
+                    user_msg_ = self.create_msg_user(x1, y1, t1, "charlatan2")
+                    user_msg_.valid_orientation = 1
+                    user_msg_.certainty = 0.9
+                    userarray_msg.users.append(user_msg_)
+
+                elif self._corner:
+                    x1 = rospy.get_param('~Users/corner_users/user1/x_pos', 0)
+                    y1 = rospy.get_param('~Users/corner_users/user1/y_pos', 0)
+                    t1 = rospy.get_param('~Users/corner_users/user1/theta', 0)
+                
+                    user_msg_ = self.create_msg_user(x1, y1, t1, "soldador")
+                    user_msg_.valid_orientation = 1
+                    user_msg_.certainty = 0.9
+                    userarray_msg.users.append(user_msg_)
+
+
+                    x1 = rospy.get_param('~Users/corner_users/user2/x_pos', 0)
+                    y1 = rospy.get_param('~Users/corner_users/user2/y_pos', 0)
+                    t1 = rospy.get_param('~Users/corner_users/user2/theta', 0)
+                
+                    user_msg_ = self.create_msg_user(x1, y1, t1, "giraffita")
+                    user_msg_.valid_orientation = 1
+                    user_msg_.certainty = 0.9
+                    userarray_msg.users.append(user_msg_)
+
+                self._pub_people.publish(userarray_msg)
+                
+                
+            r.sleep()
+
+        rospy.signal_shutdown("Existing person converter")
+        sys.exit(1)
+
+
+
+
+if __name__ == '__main__':
+    try:
+        x = GenUsers()
+        x.loop_converter()
+
+    except rospy.ROSInterruptException: pass

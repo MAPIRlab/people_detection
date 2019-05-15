@@ -1,0 +1,94 @@
+#########################################################################################################################
+#                                                        Scheme:                                                        #
+#                                                                                                                       #
+#               Camera  -->     Openpose Detection      -->     Image 2D Processing     -->     Depth Processing        #
+#                                                                                                                       #
+#########################################################################################################################
+NOTE: openpose.yaml contents all the parameters for this package, including ros topics and services.
+
+##############################################################################################################################     
+########        CAMERA:
+- This node sends image to the openpose node with frec X ({frec_off, frec_low, frec_high}). 
+- Start detection: 
+        - Use the service called: 'openpose/start_detection_humans_service' to start the human detection. 
+        - The frec can be specified while calling the service start wiht the param: 'initial_frec'. Current options: 'off', 'low', 'high'. By default, the frec of the publisher is set to 'high'. If you use 'off' as 'initial_frec' the detection will not start (it can be used to stop the detection)
+        - During the detection, it's possible to change the cam from which the camera node is taking the images. Use the service: 'openpose/change_cam_detection' with the parameter 'activate_cam' to specify which cam. Current options: 'fish' -usb cam- and 'rgbd' -rgbd cam-. This last one provides as with the depth field.
+        - If the detection is deactivated, you cannot change the change (it doesn't make sense :/ ), and it's always using the 'fish'
+- You can change the frecuency using the service 'openpose/change_frec_detection_service' even if the detection is not actived. Use the parameter 'change_frec_to' with value: 'off', 'low', 'high' to specify the frecuency. If the frec is changed to 'off', the detection is deactivated.
+- Off frecuency can be 0 or greater, while low and high frecuency must be greater than 0. 
+
+#####################
+###     OUTPUT    ###
+#####################
+This node publishes a message 'ImageDephtHuman' on topic '/openpose/usb_cam/image_dim':
+- This msg contains a 2d Imag (sensor_msgs/Image), a DepthCloud2 msg (sensor_msgs/DepthCloud2) and two flags: 'valid_depth' if the DepthCloud2 msg is valid and 'detection_active' flag which indicates if the detection is actived. 
+- DepthCloud2 is empty if we are using the fish-eye cam. 
+- If 'valid_depth' is set, the Image and the DepthCloud are coming from the RGB-D cam.
+- Images are resized before being published with the factor 'factor'. 'factor' can be > 0 (Bigger image) or < 0 (Smaller Image). If the factor is 0, the size is the same as the original. If factor makes the image too small (dims < (50,50)), the image is not resized.
+- Output image has no distortion.
+- Warning: Image size can differ when they are coming from different cams!!!!  
+
+#####################
+###     LAUNCH    ###
+#####################
+In order to launch this node, use the launch file: 'fishcam.launch' inside the 'openpose_pkg' package.
+
+#####################
+###     NOTES     ###
+#####################
+If you change the frec to 'off' the detection will finish. The detection WONT start again until you call the start service (changing the frec again doesnt launch the detection automatically)
+
+##############################################################################################################################     
+########        OPENPOSE DETECTION:
+                                           
+This node looks for humans inside the image that it receives via the topic 'openpose/openpose/usb_cam/image_dim'.      
+- Found humans are kept if their certainty is greater than 'threshold' (parameter). If so, a HumanArray2 msg is created and all the humans saved in it. 
+- We can specify how many humans we are looking for with the 'single_human' parameter inside 'openpose.yaml' file.  
+- If the detection is activated and the node has found some humans in the image but the depth field is not valid, the node changes the cam used to rgb-d (via service, see Camera section).                     
+- If the node cannot find any human inside the image and the detection is activated, it says no human has been found via service 'openpose/no_human_detected'       
+
+#####################
+###     OUTPUT    ###
+#####################           
+This node publishes n the topic: 'openpose/humans ' a msg type 'HumanArray2' which contains all the found humans plus the ImageDepthHuman msg sending from the camera. The msg is published even if they dont exist
+
+
+#####################
+###     LAUNCH    ###
+#####################
+In order to launch this node, use the launch file: 'openposeinference.launch' inside the 'openpose_pkg' package.
+
+##############################################################################################################################     
+################ IMAGE PROCESSING NODE
+This node processes the humans sent by the openpose node. 
+- Users: It takes the 'HumanArray2' msg and process the body parts. If it finds some users, it creates a msg 'UserRGBDArray' msg filling all the fields. 'UserRGBDArray' includes a 'PointCloud2' field with the depth values and a flag 'compute_depth' if this cloud is valid. The 'UserRGBDArray' is published in the topic 'openpose/users_3d' just if we can compute the users. This message contains the 2d-image body part of every found human. This elements will be updated by the next node. 
+- The image with the drawn humans is created and published onto the topic 'openpose/frame_humans/draw_img' This image is published even if we havent found any human.
+
+
+#####################
+###     LAUNCH    ###
+#####################
+In order to launch this node, use the launch file: 'proc_image_launch.launch' inside the 'openpose_pkg' package.
+
+##############################################################################################################################     
+################ DEPTH PROCESSING NODE
+
+This node takes the 'UserRGBDAarray' published by the image processing node and update the depth relating fields with the actual depth values. It uses the PointCloud2 field attached. It also updates the orientation of the humans. Markers for each human are created as well -visualization_msgs/MarkerArray-.
+
+#####################
+###     OUTPUT    ###
+#####################   
+
+'UserRGBDArray' with the humans poses and body parts onto the topic 'openpose/users_3d_depth'.
+'MarkerArray' is published onto the topic 'openpose/appro_user_markers'
+
+##############################################################################################################################
+####################### TURN ROBOT NODE
+When we are detecting humans, we need their 3d-Pose. We need to move the robot so that the RGB-D cam (FoV smaller) can detect the humans. This node subscribes to the 'no humans' service. When the service arrives, the node turn the robot with constante velocity (parameter) for x segs and then stops. It forces the camera node to use the fish cam.
+
+#####################
+###     LAUNCH    ###
+#####################
+
+To launch this node, use the launch file: 'turn_robot_launch.launch' inside the 'openpose_pkg' package
+

@@ -1,0 +1,8 @@
+# Define the goal
+float32 goal
+---
+# Define the result
+float32 finalx
+---
+# Define a feedback message
+float32[] diffx

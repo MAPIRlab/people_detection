@@ -1,0 +1,36 @@
+Users:
+  ## UMA_236_237 map
+  office_users:
+    user1 :
+      x_pos: -2.51
+      y_pos : -0.92
+      theta : 1.57
+    user2 :
+      x_pos : 0.437
+      y_pos : 0.0828
+      theta : -3.15
+
+  free_space_users:
+    user1 :
+      x_pos : 5.61
+      y_pos : 5.08
+      theta : 1.2
+    user2: 
+      x_pos : 3.69
+      y_pos : 4.94
+      theta : -3.15
+    user3 :
+      x_pos : 2.74
+      y_pos : 4.94
+      theta : 1.57
+
+  corner_users:
+    user1:
+      x_pos : 3.57
+      y_pos : 2.09
+      theta : 1.57
+    user2:
+      x_pos : 3.89
+      y_pos : -0.778
+      theta : 1.57
+

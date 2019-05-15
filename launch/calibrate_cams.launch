@@ -1,0 +1,8 @@
+<launch> 
+### USER RECOGNITION ###    
+       < machine name=giraffNaranja" address="192.170.1.124" env-loader="/opt/ros/kinetic/env.sh" user="mapir" password="mapir236" />
+	<node machine="giraffnaranja" pkg="openpose_pkg" type="calibrate_fish_node" name="calibrate_fish_node" output="screen" >
+		<rosparam file="$(find openpose_pkg)/launch/openpose.yaml" command="load" />
+	</node>
+	
+</launch>

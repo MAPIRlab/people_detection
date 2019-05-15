@@ -1,0 +1,21 @@
+openConnection: connect: No such file or directory
+cannot connect to brltty at :0
+upstart: Failed to spawn window-stack-bridge main process: unable to execute: No such file or directory
+upstart: unity7 main process (1745) killed by ABRT signal
+upstart: unity7 main process ended, respawning
+upstart: unity-settings-daemon main process ended, respawning
+upstart: unity-panel-service main process (1548) killed by HUP signal
+upstart: indicator-bluetooth main process (1619) killed by TERM signal
+upstart: indicator-power main process (1623) killed by TERM signal
+upstart: indicator-datetime main process (1627) killed by TERM signal
+upstart: indicator-printers main process (1632) killed by TERM signal
+upstart: indicator-session main process (1635) killed by TERM signal
+upstart: unity-settings-daemon main process (18761) killed by TERM signal
+upstart: indicator-application pre-stop process (18782) killed by TERM signal
+upstart: Disconnected from notified D-Bus bus
+upstart: bamfdaemon main process (1523) killed by TERM signal
+upstart: gnome-session (Unity) main process (1530) killed by HUP signal
+upstart: indicator-messages main process (1617) killed by HUP signal
+upstart: indicator-sound main process (1631) killed by HUP signal
+upstart: indicator-application main process (1644) killed by TERM signal
+upstart: unity7 main process (4384) killed by SEGV signal

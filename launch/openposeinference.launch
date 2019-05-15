@@ -1,0 +1,9 @@
+<launch>
+        <!-- ################## OPENPOSE NODE ##################### -->
+  	  <machine name="jetson_machine" address="192.168.2.2" env-loader="/opt/ros/kinetic/env.sh" user="nvidia" password="nvidia"/>
+
+ 	  <node machine="jetson_machine" name="openpose_new" pkg="openpose_pkg" type="openpose_new" >
+ 	        <rosparam file="$(find openpose_pkg)/launch/openpose.yaml" command="load" />
+  	  </node>
+
+</launch>

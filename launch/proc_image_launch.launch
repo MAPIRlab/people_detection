@@ -1,0 +1,7 @@
+<launch>
+        <!-- ################## FISH-EYE CAM NODE ##################### -->
+ 	  <node pkg="openpose_pkg" type="proc_human_node" name="proc_human_node" >
+ 	        <rosparam file="$(find openpose_pkg)/launch/openpose.yaml" command="load" />
+  	  </node>
+
+</launch>

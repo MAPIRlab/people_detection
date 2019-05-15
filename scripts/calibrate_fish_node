@@ -1,0 +1,88 @@
+#!/usr/bin/env python
+
+## this node uses both cams to calibrate them
+import rospy
+import roslib
+from sensor_msgs.msg import Image
+import cv2
+from cv_bridge import CvBridge, CvBridgeError
+from std_msgs.msg import Int16
+import sys
+import numpy as np
+import rospkg #for the ros pkg path
+import numpy as np
+from openpose_pkg.srv import * ##service
+from calibration_fish_rgbd import *
+
+
+class CalibratorFishClass():
+
+    def __init__(self):
+        rospy.init_node('Calibration_node')
+        self._fish_ready = False
+        self._rgbd_ready = False
+        self._img_fish = None
+        self._img_rgbd = None
+        self._start_flag = False
+        self._bridge = CvBridge()
+
+        self._topic_image_raw = rospy.get_param('~ROSTopics/image_cam_topic', '/image_raw')
+        self._topic_image_raw_rgb = rospy.get_param('~ROSTopics/rgb_cam_topic', '/image_raw') 
+        self._srv_calibration = rospy.get_param('~ROSTopics/calibration_srv', '/image_raw') 
+        rospy.loginfo("fish eye topic: %s", self._topic_image_raw)
+        rospy.loginfo("rgb eye topic: %s", self._topic_image_raw_rgb)
+        r=rospy.Rate(500)
+        
+    def calibrate(self):
+        ## cams s
+        H = None
+        self._sub_cam = rospy.Subscriber(self._topic_image_raw, Image, self.callback_fish)
+        self._sub_cam2 = rospy.Subscriber(self._topic_image_raw_rgb, Image, self.callback_rgbd)
+        rospy.loginfo("subscriber correct, starting calibraton")
+        ##service to start calibration
+        self._srv_start = rospy.Service('start_calibration_fish_srv', CalibrateSrv, self.calibration_service_call)
+        while (not rospy.is_shutdown()):
+            if self._start_flag and self._fish_ready and self._rgbd_ready:
+                cal = CalibratorFishDepth(self._img_fish, self._img_rgbd)
+                H = cal.calibrate()
+                if H is None:
+                    rospy.loginfo("Error while computing the trasnformation")
+                else:
+                    ##save H
+                    rospy.loginfo("saving result")
+                    rospack = rospkg.RosPack()
+                    pkg_path = rospack.get_path('openpose_pkg') + '/calibration/fish_rgbd.npy' 
+                    np.save(pkg_path, H)
+
+        return H
+
+    def calibration_service_call(self, req):
+
+        self._start_flag = not self._start_flag
+        return CalibrateSrvResponse()
+
+    def callback_fish(self, image):
+        try:
+            self._img_fish = self._bridge.imgmsg_to_cv2(image, "bgr8")
+            self._fish_ready = True
+            
+        except CvBridgeError as e:
+            rospy.loginfo(e)
+
+    def callback_rgbd(self, image):
+        try:
+            self._img_rgbd = self._bridge.imgmsg_to_cv2(image, "bgr8")
+            self._rgbd_ready = True
+            
+        except CvBridgeError as e:
+            rospy.loginfo(e)
+
+
+
+if __name__ == '__main__':
+    try:
+        x = CalibratorFishClass()
+        x.calibrate()
+    except rospy.ROSInterruptException: pass
+
+

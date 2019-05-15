@@ -1,0 +1,81 @@
+#!/usr/bin/env python
+import rospy
+
+import sys
+import numpy as np
+from openpose_pkg.srv import *
+import time
+import rospkg #for the ros pkg path
+from geometry_msgs.msg import Twist
+
+
+class turnRobotClass():
+
+    def __init__(self):
+        rospy.init_node('turn_robot_node')
+
+        ###############################
+        ####    PARAMETERS         ####
+        ###############################
+        ## debug flag. show info
+        self._debug = rospy.get_param('~DebugIngo/debug_info', False)
+
+        self._no_human_srv = rospy.get_param('~ROSServices/no_human_srv', '/human')
+        self._topic_vel = rospy.get_param('~ROSTopics/cmd_vel_topic', '/cmd_vel')
+        self._turning_speed = rospy.get_param('~RobotParam/turning_speed', 0.1)
+        self._srv_change_cam = rospy.get_param('~ROSServices/change_cam', '/off_frec')
+
+        self._pub_vel = rospy.Publisher(self._topic_vel, Twist, queue_size = 1) 
+
+        self._srv_no_human = rospy.Service (self._no_human_srv, NoHuman, self.no_human_callback)
+
+        self._srv_change_cam_handle = rospy.ServiceProxy(self._srv_change_cam, ChangeCam)
+        self._moving_robot = False
+        self._callback_time = 0.0
+
+
+    def no_human_callback(self, req):
+        if not self._moving_robot:
+            rotate = Twist()
+            rotate.linear.x = rotate.linear.y = rotate.linear.z = 0.0
+            self._vel_human = req.vel_human
+                        
+            rotate.angular.z = (self._vel_human[0] > 0) * self._turning_speed - (self._vel_human[0] < 0) * self._turning_speed
+
+            self._pub_vel.publish(rotate)
+            self._moving_robot = True
+            self._callback_time = rospy.Time.now()
+        
+        return NoHumanResponse()
+
+
+    def turn_robot(self):
+
+        self._moving_time = rospy.Duration.from_sec(1.)
+        r = rospy.Rate(300)
+        while not rospy.is_shutdown():
+            if self._moving_robot and (rospy.Time.now() - self._callback_time) > self._moving_time:   
+                
+                rotate = Twist()
+                rotate.linear.x = rotate.linear.y = rotate.linear.z = 0.0
+                
+                rotate.angular.z = 0.0
+                self._pub_vel.publish(rotate) ## stop the robot
+                try:
+                    resp = self._srv_change_cam_handle('fish') ##change to fish
+                    self._moving_robot = False
+                except rospy.ServiceException, e:
+                    print 'Service call failed!'
+            r.sleep()
+
+        rospy.signal_shutdown("Closing turning robot node")
+        sys.exit(1)
+
+
+
+
+if __name__ == '__main__':
+    try:
+        x = turnRobotClass()
+        x.turn_robot()
+    except rospy.ROSInterruptException: pass

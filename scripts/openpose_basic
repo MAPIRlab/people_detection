@@ -1,0 +1,221 @@
+#!/usr/bin/env python
+
+import rospy
+from cv_bridge import CvBridge, CvBridgeError
+from sensor_msgs.msg import Image
+from std_msgs.msg import Int16
+from openpose_pkg.msg import *
+from openpose_pkg.srv import *
+
+#import os
+import time
+import numpy as np
+import sys
+import rospkg #for the ros pkg path
+### Load model ###
+from estimator2 import TfPoseEstimator
+#opencv to copy the image
+import cv2
+
+
+#########################################################
+##### OPENPOSE detects humans when an image arrived #####
+#########################################################
+## ToDo: improve detection
+        
+class OpenposeClass:
+
+    def __init__(self):
+        self._img_ready = False
+        self._detect_humans = False
+        self._tf_start = False
+
+        self._compute_depth = False
+        self._move_robot = False
+
+        rospack = rospkg.RosPack()      
+        self._models_path = rospack.get_path('openpose_pkg') + '/models/graph_opt.pb'       
+
+        #node
+        rospy.init_node('openpose_node')
+        #for opencv
+        self._bridge = CvBridge()
+
+        ###############################
+        ####    PARAMETERS         ####
+        ###############################
+        ## debug flag. show info
+        self._debug = rospy.get_param('~DebugIngo/debug_info', False)
+
+        # how many humans are we gonna detect ??
+        self._single_human = rospy.get_param('~HumanDetected/single_human', False)
+
+        ## threshold for the confidence of the detection
+        self._threshold_human = rospy.get_param('~HumanDetected/threshold_human', 0.0)
+
+        ## topics names
+        self._topic_image_name =  rospy.get_param('~ROSTopics/image_topic_undist', '/image_raw')
+        self._topic_humans_name = rospy.get_param('~ROSTopics/humans_topic_basic', '/humans')
+        self._no_human_srv = rospy.get_param('~ROSServices/no_human_srv', '/human')
+        self._openpose = TfPoseEstimator(self._models_path)
+
+        self._k = 0
+
+        #####################
+        ### DEBUG INFO    ###
+        #####################
+        if (self._debug):
+            rospy.loginfo('Debug info activated')
+            rospy.loginfo('Single detection: %d', self._single_human)
+            rospy.loginfo('Threshold for the detection: %d', self._threshold_human)
+            rospy.loginfo('Topic name for the image: %s', self._topic_image_name)
+            rospy.loginfo('Topic name for the humans: %s', self._topic_humans_name)
+
+ 
+
+    def humans_to_msg(self, humans, frame, cloud):
+        humanArray_msg = HumanArray2() ## return array
+        ## data about the image
+        (rows, cols, chan) = frame.shape
+        humanArray_msg.image_w = cols
+        humanArray_msg.image_h = rows
+
+        ##humans
+        ## how many humans depens on the self._single_human var
+        n_humans = 0 ## intiial = 0
+
+        if self._single_human:
+            n_humans = 1 ## we just looked for one human
+            ## JUST the first one
+        else:
+            n_humans = len(humans)
+            ## we looked for all of them
+        
+
+        if len(humans) == 0:
+            ##move robot until find humans
+            self._k += 1
+            if self._k > 20:
+                self._k = 0
+                try:
+                    resp = self._srv_no_human([1.0, 0.0])
+                except rospy.ServiceException as e:
+                    pass
+
+        elif len(humans) >= n_humans:
+            for k in range(n_humans):
+                human_msg = self.single_human_msg(humans[k])
+                if human_msg.certainty > self._threshold_human:
+                    ## human is correct
+                    humanArray_msg.humans.append(human_msg)
+
+            if len(humanArray_msg.humans) == 0:
+                self._k += 1
+                if self._k > 20:
+                    try:
+                        resp = self._srv_no_human([1.0, 0.0])
+                    except rospy.ServiceException as e:
+                        pass
+                    self._k = 0
+
+                
+        return humanArray_msg
+
+    def single_human_msg(self, human):
+        human_msg = Human()
+        part_scores = []
+        ### x_values = []
+        ### y_values = []
+        for body_part in human.body_parts.values():
+            bodyPart_msg = BodyPart()
+            bodyPart_msg.idx = body_part.part_idx
+            bodyPart_msg.x_percent = body_part.x
+            bodyPart_msg.y_percent = body_part.y
+            bodyPart_msg.score = body_part.score
+            ##if self._single_human and not self._low_frec:
+            ##    pass ## LATER
+            part_scores.append(body_part.score)
+            ### x_values.append(body_part.x)
+            ### y_values.append(body_part.y)
+
+            human_msg.parts.append(bodyPart_msg)
+            ## if speech, here !!!!! do sth to change x,y to the whole
+            ## image!!!
+            
+        human_msg.certainty = np.mean(part_scores)/10
+        '''if self._single_human and human_msg.certainty > self._threshold_human:
+
+            if x_values is not None and y_values is not None:
+                new_user = [np.mean(x_values), np.mean(y_values)]
+                self._vel_window = self.vel_human(new_user, self._prev_user)
+                self._prev_user = new_user'''
+        return human_msg
+
+    def detect_humans(self):
+
+        #publishers and subscribers
+
+        ## cam topic
+        self._sub_cam = rospy.Subscriber(self._topic_image_name, Image, self.callback_image)
+        ## humans parts and image where they were found topics
+        self._pub_human = rospy.Publisher(self._topic_humans_name, HumanArray, queue_size=1)
+
+        self._srv_no_human = rospy.ServiceProxy(self._no_human_srv, NoHuman)
+
+        ## this rate in unreal, we cannot achieve it!!
+        r=rospy.Rate(500) #500 Hz
+
+        while(not rospy.is_shutdown()):        
+            r.sleep()
+
+        ###self._bag.close()
+        rospy.signal_shutdown("Exiting openpose node.\n")
+        sys.exit(1)
+
+    def callback_image(self, frame_ros):
+        
+        try:
+            self._header_ros = frame_ros.header
+            self._frame_cv = self._bridge.imgmsg_to_cv2(frame_ros, "bgr8")
+            self.publish_human_pose()
+
+        except CvBridgeError as e:
+            pass
+        
+        
+        
+    def publish_human_pose(self):
+        ## copy the image into another var
+        self._frame_humans = cv2.copyMakeBorder(self._frame_cv, 0, 0, 0, 0, cv2.BORDER_REPLICATE)   
+        ## where are the humans ?!?!
+        
+        humans, times = self._openpose.inference(self._frame_humans)
+        ##self._bag_time.write('times_inference', times[0])
+
+        if self._debug:
+            rospy.loginfo("Inference times: %d - %d - %d ", times[0], imes[1], times[2])
+
+        ## convert to ros msg
+        humanArray_msg = self.humans_to_msg(humans, self._frame_humans, self._cloud)
+        
+        ## publish human array
+        self._pub_human.publish(humanArray_msg)
+
+        
+
+
+
+
+
+if __name__ == '__main__':
+    try:
+        x = OpenposeClass()
+        x.detect_humans()
+    except rospy.ROSInterruptException: pass
+
+
+
+
+
+
+

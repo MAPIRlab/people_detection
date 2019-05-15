@@ -1,0 +1,8 @@
+<launch>
+                <include file="$(find openpose_pkg)/launch/camera_dual_launch.launch" />
+                <include file="$(find openpose_pkg)/launch/proc_depth_humans_launch.launch" />
+                <include file="$(find openpose_pkg)/launch/proc_image_launch.launch" />
+                <include file="$(find openpose_pkg)/launch/converteruser.launch" /> 
+                <include file="$(find openpose_pkg)/launch/openpose_inference_launch.launch" /> 
+
+</launch>

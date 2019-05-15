@@ -1,0 +1,330 @@
+#!/usr/bin/env python
+
+import rospy
+import roslib
+from sensor_msgs.msg import Image, PointCloud2
+import cv2
+from cv_bridge import CvBridge, CvBridgeError
+from std_msgs.msg import Int16
+import sys
+import numpy as np
+from openpose_pkg.srv import *
+from openpose_pkg.msg import *
+from calibrator import Calibrator
+import rospkg #for the ros pkg path
+import time
+
+#############################################################################
+######### this node resizes the images AND publishes it with different Hz ###
+#############################################################################
+class camera_usb:
+    def __init__(self):
+
+        rospy.init_node('camera_usb_fish_openpose_node', anonymous=True)
+        self._bridge = CvBridge() ## cv bridge
+        ###############################
+        ####    PARAMETERS         ####
+        ###############################
+        ## debug flag. show info
+        self._debug = rospy.get_param('~DebugInfo/debug_info', False)
+        
+
+        ## dim of the image
+        self._factor_dim = rospy.get_param('~ImageParameters/factor', 1.0)
+        
+        ## frecuencies
+        self._frec_off = rospy.get_param('~FrecInference/off_frec', 1)
+        self._frec_low = rospy.get_param('~FrecInference/low_frec', 1)
+        self._frec_high = rospy.get_param('~FrecInference/high_frec', 1)
+
+        ## services names
+        self._srv_change_name = rospy.get_param('~ROSServices/change_frec_srv', '/change_frec')
+        ##self._srv_off_name = rospy.get_param('~ROSServices/off_frec_srv', '/off_frec')
+        self._srv_change_cam = rospy.get_param('~ROSServices/change_cam', '/off_frec2')
+        self._srv_start_name = rospy.get_param('~ROSServices/start_detection_srv', '/off_frec3')
+
+
+        ## topics names
+        self._topic_image =  rospy.get_param('~ROSTopics/image_topic', '/image_raw')
+        self._topic_image_raw = rospy.get_param('~ROSTopics/image_cam_topic', '/image_raw3')
+        self._topic_point_cloud_name = rospy.get_param('~ROSTopics/depth_cloud_topic', '/frame_humans')
+        self._topic_rgb_image = rospy.get_param('~ROSTopics/rgb_cam_topic', '/image_raw0')
+
+        #####################
+        ### DEBUG INFO    ###
+        #####################
+   
+        if self._debug:
+            rospy.loginfo('Debug info activated')
+            rospy.loginfo('Off frecuency: %d', self._frec_off)
+            rospy.loginfo('Low frecuency: %d', self._frec_low)
+            rospy.loginfo('High frecuency: %d', self._frec_high)
+            rospy.loginfo('Factor for the image: %d ', self._factor_dim)
+            rospy.loginfo('RGB Topic name: %s', self._topic_rgb_image )
+            ##rospy.loginfo('Service name to turn off the detection: %s', self._srv_change_name)
+            rospy.loginfo('Topic name for the image: %s', self._topic_image)
+
+        self._zero_frec_off = False ## indicates if the off frec is zero, aka, do not publish
+
+        if self._frec_low < 1.0:
+            self._frec_low = 1.0
+
+        if self._frec_high < 1.0:
+            self._frec_high = 1.0
+
+        if self._frec_high < self._frec_low:
+            self._frec_high = self._frec_low + 1.0
+
+        if self._frec_off <= 0.0:
+            self._frec_off = 1.0 ##so that rate does not explode
+            self._zero_frec_off = True
+
+        ## useful vars
+        self._mode_off = True
+
+        self._img_ready = False
+        self._frame_cv1 = None
+        self._header_img = None ## we need to add this
+
+        self._flag_cloud = False
+        self._cloud_points = None
+
+        self._time_cloud = 0.0
+        self._time_img = 0.0
+
+        self._detection_active = False
+        self._mode_cam = False ## false = fish cam, true = rgbd cam
+
+        #####################
+        ###  CALIBRATION  ###
+        #####################
+        ## reading calibration info
+        rospack = rospkg.RosPack()
+        self._pkg_path = rospack.get_path('openpose_pkg') + '/calibration/'
+        self._K_path = self._pkg_path + 'K.npy'
+        self._dist_path = self._pkg_path + 'dist.npy'
+        self._K = np.load(self._K_path)
+        self._dist = np.load(self._dist_path)
+        self._calibrator = Calibrator(self._K, self._dist)
+
+        
+        ## services
+        self._change_det_srv = rospy.Service(self._srv_change_name, ChangeFrecDetection, self.change_frec_srv)
+        self._change_cam_srv = rospy.Service (self._srv_change_cam, ChangeCam, self.change_cam_srv)
+        self._start_det_srv = rospy.Service (self._srv_start_name, StartDetectionHuman, self.start_det_srv_callback)
+
+
+        ## topics
+        
+        self._sub_point_depth = rospy.Subscriber(self._topic_point_cloud_name, PointCloud2, self.callback_points)
+        self._sub_cam_usb = rospy.Subscriber(self._topic_image_raw, Image, self.callback_image) ## fish eye cam
+        self._sub_cam_rgb = rospy.Subscriber(self._topic_rgb_image, Image, self.callback_image_rgb) ## rgb-d cam
+
+        self._pub_img = rospy.Publisher(self._topic_image, ImageDepthHuman, queue_size=1)
+
+        self._r = rospy.Rate(self._frec_off) # so we start with the off frecuency, 
+
+    def start_det_srv_callback(self, req):
+        ##this service start the detection
+        self._detection_active = False
+        if self._debug:
+            rospy.loginfo('Detection active !!!')
+
+        ## compute depth
+        if req.compute_depth == 'on':
+            self._detection_active = True
+        else:
+            self._detection_active = False
+            self._mode_cam = False
+
+            
+        if req.initial_frec == 'low':
+            self._r = rospy.Rate(self._frec_low)
+            self._mode_off = False
+
+        elif req.initial_frec == 'off':
+            self._detection_active = False
+            self._mode_cam = False ##change to fish-eye cam
+            self._r = rospy.Rate(self._frec_off)
+            self._mode_off = True
+        else:
+            rospy.loginfo('Highfrec')
+            self._r = rospy.Rate(self._frec_high)
+            self._mode_off = False
+
+        print self._detection_active
+        
+        return StartDetectionHumanResponse()
+
+    def change_cam_srv(self, req):
+        if self._detection_active:
+            ## changing the cam just makes sense
+            ## when we are looking for sth
+            if req.activate_cam == 'fish':
+                self._mode_cam = False ##change to fish-eye cam
+                
+            elif req.activate_cam == 'rgbd':
+                self._mode_cam = True ## change to rgb-d cam
+        else:
+            self._mode_cam = False
+        return ChangeCamResponse() 
+
+    def change_frec_srv(self,req):
+        if req.change_frec_to == 'off':
+            ## we start
+            self._r = rospy.Rate(self._frec_off)
+            self._mode_off = True
+
+            self._detection_active = False
+            self._mode_cam = False ##change to fish-eye cam
+            
+
+        elif req.change_frec_to == 'low':
+            
+            self._mode_off = False
+            self._r = rospy.Rate(self._frec_low)
+            
+        elif req.change_frec_to == 'high':
+            
+            self._mode_off = False
+            self._r = rospy.Rate(self._frec_high)
+            
+        return ChangeFrecDetectionResponse()
+
+        
+    def callback_points(self, point_cloud):
+        self._cloud_points = point_cloud
+        self._flag_cloud = True
+        self._time_cloud = time.time()
+
+    def callback_image(self, frame_cam):
+        ##this one is coming form the usbcam (aka fish)
+        if not self._mode_cam: ##if fish
+            try:
+                if self._debug:
+                    rospy.loginfo('Fish-eye cam callback')
+                   
+                self._header_img = frame_cam.header
+                self._frame_cv1 = self._bridge.imgmsg_to_cv2(frame_cam, "bgr8")
+                self._img_ready = True
+                
+            except CvBridgeError as e:
+                print(e)    
+
+    def callback_image_rgb(self, frame_cam):
+
+        if self._mode_cam == True:
+            try:
+                if self._debug:
+                    rospy.loginfo('RGB-D Callback')
+                self._header_img = frame_cam.header
+                self._frame_cv1 = self._bridge.imgmsg_to_cv2(frame_cam, "bgr8")
+                self._img_ready = True
+                self._time_img = time.time()
+                
+            except CvBridgeError as e:
+                print(e) 
+
+    def undistort_resize(self, frame):
+        frame_resize = None
+        if self._debug:
+            rospy.loginfo('undistort image')
+        if frame is not None:
+            ## undistort image
+            if not self._mode_cam: ## fish with distortion
+                frame_undis = self._calibrator.undistort(frame)
+            else:
+                frame_undis= cv2.copyMakeBorder(frame,0,0,0,0,cv2.BORDER_REPLICATE)
+
+                
+            if frame_undis is not None:
+                ## apply factor
+                (rows, cols, chan) = frame_undis.shape
+                if(self._factor_dim > 0.0):
+                    frame_resize = cv2.resize(frame_undis, (int(cols*self._factor_dim), int(rows*self._factor_dim)), interpolation=cv2.INTER_CUBIC)
+
+                else:
+                    if (int(-cols/self._factor_dim) < 50 or int(-rows/self._factor_dim) < 50):
+                        if self._debug:
+                            rospy.loginfo("Error, new dimensions for the image too small!!!. factor = 1.0")
+                        self._factor_dim = -1
+
+                    frame_resize = cv2.resize(frame_undis, (int(-cols/self._factor_dim), int(-rows/self._factor_dim)), interpolation=cv2.INTER_CUBIC)
+                        
+        return frame_resize
+
+    def send_images_loop(self):
+        self._detection_active = False
+        while (not rospy.is_shutdown()):
+
+            ## if we dont need to compute the depth
+            if not self._detection_active and self._img_ready: ## we are using the fish
+                
+                if self._debug:
+                    rospy.loginfo('Sending image without detection')
+                if self._mode_off and self._zero_frec_off:
+                    pass
+
+                else:
+                    image_msg = ImageDepthHuman()
+                    try:
+                        new_frame = self.undistort_resize(self._frame_cv1)
+                        if new_frame is not None:
+                            image_msg.image_2d = self._bridge.cv2_to_imgmsg(new_frame, "bgr8")
+                            image_msg.image_2d.header = self._header_img
+
+                            image_msg.point_cloud_3d = PointCloud2()
+                            image_msg.valid_depth = 0.0 
+                            image_msg.detection_active = 0.0
+                            self._pub_img.publish(image_msg)
+                    except CvBridgeError as e:
+                        pass
+                self._img_ready = False
+
+            elif self._img_ready and self._detection_active:
+                if self._debug:
+                    rospy.loginfo('Detection active, sending image')
+               
+                ## undistort and resize image 
+                new_frame = self.undistort_resize(self._frame_cv1)
+                if new_frame is not None:
+                    image_msg = ImageDepthHuman()
+                    try:
+                        image_msg.image_2d = self._bridge.cv2_to_imgmsg(new_frame, "bgr8")
+                        image_msg.image_2d.header = self._header_img
+
+                        image_msg.valid_depth = int(self._mode_cam)
+                        image_msg.detection_active = self._detection_active
+                        
+                        if not self._mode_cam:
+                            image_msg.point_cloud_3d = PointCloud2()
+                            
+                        elif self._mode_cam and self._flag_cloud:
+                            image_msg.point_cloud_3d = self._cloud_points
+
+
+                        self._pub_img.publish(image_msg)
+                        self._img_ready = False
+                        self._flag_cloud = False
+                        if self._debug:
+                            rospy.loginfo('Image sent with detection')
+                    except CvBridgeError as e:
+                        pass
+            self._r.sleep()
+            
+                
+        rospy.signal_shutdown("Closing camera node.\n")
+        sys.exit(1)
+        
+
+
+if __name__ == '__main__':
+    try:
+        x = camera_usb()
+        x.send_images_loop()
+    except rospy.ROSInterruptException: pass
+
+
+
+
+

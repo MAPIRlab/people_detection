@@ -1,0 +1,7 @@
+<launch>
+      
+      <node name="openpose_new" pkg="openpose_pkg" type="openpose_new" >
+            <rosparam file="$(find openpose_pkg)/launch/openpose.yaml" command="load" />
+      </node>
+
+</launch>

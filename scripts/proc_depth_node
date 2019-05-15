@@ -1,0 +1,121 @@
+#!/usr/bin/env python
+
+## we need the frequency
+import rospy
+from sensor_msgs.msg import Image
+from visualization_msgs.msg import MarkerArray, Marker
+import cv2
+from cv_bridge import CvBridge, CvBridgeError
+import sys
+##from std_msgs.msg import Int16
+import numpy as np
+from openpose_pkg.msg import *
+from proc_depth import *
+import rosbag
+
+import time
+import rospkg #for the ros pkg path
+
+class HumanDepthProcessorClass:
+    def __init__(self):
+
+        rospy.init_node('proc_human_depth_2d_node')
+
+        ###############################
+        ####    PARAMETERS         ####
+        ###############################
+        ## debug flag. show info
+        self._debug = rospy.get_param('~DebugInfo/debug_info', False)
+        self._factor = rospy.get_param('~ImageParameters/factor', 1)
+        self._create_body_3d = rospy.get_param('~HumanDetected/compute_body', False)
+        ## topics names
+        self._topic_human_3d_name = rospy.get_param('~ROSTopics/humans_3d_topic', '/frame_humans') ##sub
+        self._topic_users_3d = rospy.get_param('~ROSTopics/users_3d_topic', '/empty_topic') ##pub
+        self._topic_marker = rospy.get_param('~ROSTopics/marker_users_topic', '/markers_users') 
+        self._no_human_srv = rospy.get_param('~ROSServices/no_human_srv', '/human')
+        self._topic_body_3d_markers = rospy.get_param('~ROSTopics/markers_3d_body_parts_topic', '/frame_humans')
+
+
+
+        self._header_users = None
+        self._users = None
+        self._width_img = 100.0
+        self._height_img = 100.0
+        ### self._bag = rosbag.Bag('3d_users_depth.bag', 'w')
+
+        #####################
+        ### DEBUG INFO    ###
+        #####################
+        if (self._debug):
+            rospy.loginfo('Debug info activated')
+            rospy.loginfo('Topic name for the openpose-3d users: %s', self._topic_users_3d)
+            rospy.loginfo('Topic name for the users (subscriber): %s', self._topic_human_3d_name)
+
+    
+    def process_humans(self):
+        self._bridge = CvBridge()
+
+        self._sub_humans = rospy.Subscriber(self._topic_human_3d_name, UserRGBDArray, self.callback_users) ## users from proc. image node
+        
+        self._pub_user = rospy.Publisher(self._topic_users_3d, User3DArray, queue_size=100) ## user array in 3D
+        self._pub_marker = rospy.Publisher(self._topic_marker, MarkerArray, queue_size = 10) 
+        ### print 'topic', self._topic_marker
+        #self._srv_no_human = rospy.ServiceProxy(self._no_human_srv, NoHuman)
+        self._pub_markers_body = rospy.Publisher(self._topic_body_3d_markers, MarkerArray, queue_size = 10) ##img with drawn human
+
+
+
+        r = rospy.Rate(500) 
+        self._k = 0
+        while (not rospy.is_shutdown()):       
+            r.sleep()
+        
+       ## self._bag.close()
+        rospy.signal_shutdown("Exiting openpose publisher node.\n")
+        sys.exit(1)
+    
+        
+
+
+
+    def callback_users(self, user_array):
+
+        if user_array.compute_depth:
+            ##print 'computing depth callback'
+            self._users = user_array
+            if len(self._users.users) > 0:
+                users = HumanDepthSet(self._users, self._factor, self._create_body_3d)
+                userarray_msg, userarrarmarker_msg, markers_body, cloud_correct = users.create_msg_depth_cloud()
+                ###print userarray_msg
+                if cloud_correct:
+                    if len(userarray_msg.users) > 0:
+                        self._pub_user.publish(userarray_msg)
+                        self._pub_marker.publish(userarrarmarker_msg)
+                        if self._create_body_3d:
+                            self._pub_markers_body.publish(markers_body)
+                        
+                        ##self._bag.write('3d-users', userarray_msg)
+
+                        ### print 'publishing humans'
+
+                    else:
+                        self._k += 1
+                        ##move robot until find humans
+                        ### print 'human no valid'
+                        if self._k > 7:
+                            self._k = 0
+                            try:
+                                print 'calling srv from depth'
+                                #resp = self._srv_no_human([1.0, 0.0])
+                            except rospy.ServiceException as e:
+                                pass
+                        
+
+if __name__ == '__main__':
+    try:
+        x = HumanDepthProcessorClass()
+        x.process_humans()
+    except rospy.ROSInterruptException: pass
+
+
+

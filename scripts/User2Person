@@ -1,0 +1,60 @@
+#!/usr/bin/env python
+
+import rospy
+import sys
+##from std_msgs.msg import Int16
+import numpy as np
+from openpose_pkg.msg import *
+
+from proxemic2_pkg.msg import *
+
+
+class ProcUserToPerson:
+
+    def __init__(self):
+
+        rospy.init_node('converter_node')
+
+        self._topic_users_3d = rospy.get_param('~ROSTopics/users_3d_topic', '/empty_topic') 
+        self._topic_people = rospy.get_param('~ROSTopics/people', '/people')
+
+        self._sub_user = rospy.Subscriber(self._topic_users_3d, User3DArray, self.callback_users)
+
+        self._pub_people = rospy.Publisher(self._topic_people, People, queue_size = 100)
+        rospy.loginfo("user topic %s", self._topic_users_3d)
+        rospy.loginfo("people topic %s", self._topic_people)
+    def loop_converter(self):
+        r = rospy.Rate(500)
+
+        while (not rospy.is_shutdown()):
+            r.sleep()
+
+        rospy.signal_shutdown("Existing person converter")
+        sys.exit(1)
+
+
+    def callback_users(self, data):
+        rospy.loginfo("Data rec")
+        people_msg = People()
+        header = data.header
+        users = data.users ## this is an array
+        people_msg.header = header
+        for user in users:
+            person_msg = Person()
+            person_msg.name = user.name
+            person_msg.pose = user.pose_3D
+            person_msg.reliability = user.certainty
+
+            people_msg.people.append(person_msg)
+
+        if (len (people_msg.people) > 0):
+            self._pub_people.publish(people_msg)
+
+
+
+if __name__ == '__main__':
+    try:
+        x = ProcUserToPerson()
+        x.loop_converter()
+    except rospy.ROSInterruptException: pass
+

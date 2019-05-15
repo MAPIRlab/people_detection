@@ -1,0 +1,89 @@
+#!/usr/bin/env python
+
+import rospy
+import sys
+##from std_msgs.msg import Int16
+import numpy as np
+from openpose_pkg.msg import *
+
+#from proxemic2_pkg.msg import *
+from people_msgs.msg import People, Person
+
+
+class ProcUserToPerson:
+
+    def __init__(self):
+
+        rospy.init_node('converter_node2')
+
+        self._topic_users_3d = rospy.get_param('~ROSTopics/users_3d_topic', '/empty_topic') 
+        self._topic_people = rospy.get_param('~ROSTopics/people', '/people')
+
+        self._keep_alive = rospy.get_param('~HumanDetected/keep_alive', 0.3)
+        self._max_freq_pub = rospy.get_param('~HumanDetected/max_freq_pub', 10)
+        self._human_detected = False
+        self._timeout_detection = False
+        self._keep_alive_dur = rospy.Duration.from_sec(self._keep_alive)
+
+        self._r = rospy.Rate(self._max_freq_pub)
+        self._sub_user = rospy.Subscriber(self._topic_users_3d, User3DArray, self.callback_users)
+
+        self._pub_people = rospy.Publisher(self._topic_people, People, queue_size = 100)
+        self._people_msg = People()
+        self._people_former = People()
+        self._started_time = rospy.Time.now()
+
+        ##rospy.loginfo("user topic %s", self._topic_users_3d)
+        ##rospy.loginfo("people topic %s", self._topic_people)
+
+    def loop_converter(self):
+       
+
+        while (not rospy.is_shutdown()):
+            if self._human_detected:
+                # we publish the new people msg
+                self._human_detected = False # down the flag
+                self._pub_people.publish(self._people_msg) # publish the msg
+                self._started_time = rospy.Time.now() # restart the timer
+                self._people_former = self._people_msg # copy the msg
+                #rospy.loginfo("Data from callback")
+                
+            elif ((rospy.Time.now() - self._started_time) < self._keep_alive_dur):
+                # we publish the former people msg
+                if (len (self._people_msg.people) > 0):
+                    self._pub_people.publish(self._people_former)
+                    #rospy.loginfo("Data from past")
+
+            else:
+                self._people_former = People() # clean the msg
+            
+            self._r.sleep()
+
+        ##rospy.signal_shutdown("Existing person converter")
+        sys.exit(1)
+
+
+    def callback_users(self, data):
+        #rospy.loginfo("Data rec")
+        
+        self._people_msg = People() ##clean the array
+        users = data.users ## this is an array
+        self._people_msg.header = data.header
+        for user in users:
+            person_msg = Person()
+            person_msg.position = user.pose_3D.position
+            person_msg.reliability = user.certainty
+
+            self._people_msg.people.append(person_msg)
+
+        if (len (self._people_msg.people) > 0):
+            self._human_detected = True # we've detected a new human
+            
+
+
+if __name__ == '__main__':
+    try:
+        x = ProcUserToPerson()
+        x.loop_converter()
+    except rospy.ROSInterruptException: pass
+
