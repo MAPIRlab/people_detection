@@ -141,7 +141,8 @@ class HumanCenteredAction(object):
 
             # Not a valid human-center on image (check timeout)
             elif (rospy.Time.now() - self._last_time_human).to_sec() > self._time_out_detection:
-                rospy.loginfo('[%s]: TimeOut Reached' % self._action_name)
+                if self._verbose:
+                    rospy.loginfo('[%s]: TimeOut Reached' % self._action_name)
 
                 # Check if user is close! rotate a bit
                 rotate = Twist()
