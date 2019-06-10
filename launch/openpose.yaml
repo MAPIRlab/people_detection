@@ -23,6 +23,7 @@ RobotParam:
   turning_speed : 0.3
   error_dist : 10
   time_out_detection: 1.0   #timeout for aborting if user not found
+  verbose: False
  
 Rooms:
   office : False
