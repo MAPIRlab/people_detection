@@ -13,7 +13,7 @@ HumanDetected:
   threshold_human : 0.4
   single_human : False
   compute_body : True
-  keep_alive : 0.5 # in secs
+  keep_alive : 0.5  # in secs
   max_freq_pub : 10 ## Hz
 
 ImageParameters:
@@ -21,8 +21,8 @@ ImageParameters:
   
 RobotParam: 
   turning_speed : 0.3
-  error_dist : 10
-  time_out_detection: 1.0   #timeout for aborting if user not found
+  error_dist : 10           # (px) Threshold to consider user centered on image
+  time_out_detection: 1.0   # (Sec) Timeout for aborting if user not found
   verbose: False
  
 Rooms:

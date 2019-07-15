@@ -95,23 +95,25 @@ class HumanCenteredAction(object):
                 self.success = False
                 break
 
-            # Step 2: if we have a valid human center, we move the robot
+            # Step 2: check if user detected
             if self._valid_center:
                 if self._verbose:
                     rospy.loginfo('[%s]: valid human center.', self._action_name)
 
+                # Update condition
                 self._valid_center = False
                 self._last_time_human = rospy.Time.now()
+
                 # send the feedback back
                 self._feedback.diffx.append(self._center_x)
-                # publish the feedback
                 self._as.publish_feedback(self._feedback)
 
+
                 if fabs(self._center_x) > self._tolerance_dist:
-                    # command the robot
+                    # Turn a bit the robot
                     rotate = Twist()
                     rotate.linear.x = rotate.linear.y = rotate.linear.z = 0.0
-                    red_factor = (self._width - fabs(self._center_x))/ self._width # reduction factor between 0 and 1
+                    red_factor = (self._width - fabs(self._center_x))/ self._width # reduction factor between 1/2 and 1
                     direction = 0
                     if self._center_x < 0:
                         direction = 1
@@ -122,6 +124,7 @@ class HumanCenteredAction(object):
                     self._pub_vel.publish(rotate)
                     if self._verbose:
                         rospy.loginfo('[%s]: Turning robot at [%.3f]rad/s...', self._action_name,rotate.angular.z )
+                    rospy.sleep(0.1)
 
                 else:
                     # we are in front of the human
@@ -134,6 +137,7 @@ class HumanCenteredAction(object):
                     self._pub_vel.publish(rotate)
 
                     self.success = True
+                    self.failed = False
                     try:
                         self._srv_start('low', 'on') # we set the frecuency to low
                     except rospy.ServiceException, e:
@@ -144,7 +148,7 @@ class HumanCenteredAction(object):
                 if self._verbose:
                     rospy.loginfo('[%s]: TimeOut Reached' % self._action_name)
 
-                # Check if user is close! rotate a bit
+                # User not found, lets rotate to check if it is close by
                 rotate = Twist()
                 rotate.linear.x = rotate.linear.y = rotate.linear.z = 0.0
                 direction = 1
@@ -158,18 +162,19 @@ class HumanCenteredAction(object):
                     rotate.linear.x = rotate.linear.y = rotate.linear.z = 0.0
                     rotate.angular.z = 0
                     self._pub_vel.publish(rotate)
-                    self.failed=True
-                    self.success=True
+                    self.failed = True
+                    self.success = True
                     break
 
                 # command the robot
                 rotate.angular.z = direction * self._turning_speed
                 self._pub_vel.publish(rotate)
-                rospy.sleep(0.2)
+                rospy.sleep(0.1)
             else:
                 if self._verbose:
                     rospy.loginfo('[%s]: Not user detected. Waiting...', self._action_name)
-                    rospy.sleep(0.5)
+                # just wait a bit
+                rospy.sleep(0.1)
 
         # End-While -notSuccess
 
