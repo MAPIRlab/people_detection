@@ -97,8 +97,6 @@ class HumanCenteredAction(object):
 
             # Step 2: check if user detected
             if self._valid_center:
-                if self._verbose:
-                    rospy.loginfo('[%s]: valid human center.', self._action_name)
 
                 # Update condition
                 self._valid_center = False
@@ -113,7 +111,7 @@ class HumanCenteredAction(object):
                     # Turn a bit the robot
                     rotate = Twist()
                     rotate.linear.x = rotate.linear.y = rotate.linear.z = 0.0
-                    red_factor = (self._width - fabs(self._center_x))/ self._width # reduction factor between 1/2 and 1
+                    red_factor = (self._width/2 ) / (self._width - fabs(self._center_x)) # reduction factor between 1/2 and 1
                     direction = 0
                     if self._center_x < 0:
                         direction = 1
@@ -123,7 +121,7 @@ class HumanCenteredAction(object):
                     rotate.angular.z = direction * red_factor * self._turning_speed
                     self._pub_vel.publish(rotate)
                     if self._verbose:
-                        rospy.loginfo('[%s]: Turning robot at [%.3f]rad/s...', self._action_name,rotate.angular.z )
+                        rospy.loginfo('[%s]: User Detected. Turning robot at [%.2f]rad/s, x_dist = %.2f.', self._action_name,rotate.angular.z, self._center_x )
                     rospy.sleep(0.1)
 
                 else:
@@ -146,7 +144,7 @@ class HumanCenteredAction(object):
             # Not a valid human-center on image (check timeout)
             elif (rospy.Time.now() - self._last_time_human).to_sec() > self._time_out_detection:
                 if self._verbose:
-                    rospy.loginfo('[%s]: TimeOut Reached' % self._action_name)
+                    rospy.loginfo('[%s]: User Not found. Turning robot.' % self._action_name)
 
                 # User not found, lets rotate to check if it is close by
                 rotate = Twist()
@@ -171,8 +169,8 @@ class HumanCenteredAction(object):
                 self._pub_vel.publish(rotate)
                 rospy.sleep(0.1)
             else:
-                if self._verbose:
-                    rospy.loginfo('[%s]: Not user detected. Waiting...', self._action_name)
+                #if self._verbose:
+                #   rospy.loginfo('[%s]: Not user detected. Waiting...', self._action_name)
                 # just wait a bit
                 rospy.sleep(0.1)
 
